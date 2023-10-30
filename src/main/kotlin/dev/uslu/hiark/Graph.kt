@@ -1,5 +1,6 @@
 package dev.uslu.hiark
 
+import dev.uslu.hiark.annotations.ActorDecl
 import dev.uslu.hiark.annotations.StateDecl
 import dev.uslu.hiark.annotations.TransitionDecl
 import java.lang.StringBuilder
@@ -67,6 +68,8 @@ fun <TDecl : Actor<TDecl>, TImpl : TDecl> graphActor(
         dot.appendLine("subgraph cluster_${state} {")
         dot.appendLine("label = \"${state}\";")
         dot.appendLine("$state;")
+        dot.appendLine("$state [shape=rect];")
+        dot.appendLine("color=blue;")
         tree[state]!!.forEach {
             if (tree.contains(it)) {
                 // Found another root state
@@ -84,6 +87,9 @@ fun <TDecl : Actor<TDecl>, TImpl : TDecl> graphActor(
     edges.forEach {
         dot.appendLine("${it.first} -> ${it.second};")
     }
+
+    dot.appendLine("__start__ -> ${actorDecl.findAnnotation<ActorDecl>()!!.initialStateName};")
+    dot.appendLine("__start__ [shape=point];")
 
     dot.appendLine("}") // digraph G
 

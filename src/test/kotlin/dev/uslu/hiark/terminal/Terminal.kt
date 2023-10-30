@@ -9,14 +9,14 @@ import dev.uslu.hiark.annotations.TransitionDecl
 
 typealias TerminalState = State<Terminal>
 
-@ActorDecl
+@ActorDecl("bootUp")
 abstract class Terminal(name: String) : Actor<Terminal>(Terminal::bootUp, name) {
 
     @StateDecl
-    abstract fun unboardedRoot(signal: Signal) : Action<Terminal>
+    abstract fun unboarded(signal: Signal) : Action<Terminal>
 
     @StateDecl
-    abstract fun boardedRoot(signal: Signal) : Action<Terminal>
+    abstract fun boarded(signal: Signal) : Action<Terminal>
 
     @StateDecl
     abstract fun bootUp(signal: Signal) : Action<Terminal>
@@ -29,7 +29,19 @@ abstract class Terminal(name: String) : Actor<Terminal>(Terminal::bootUp, name) 
     @StateDecl
     abstract fun idle(signal: Signal) : Action<Terminal>
     @TransitionDecl("idle")
-    sealed class IdleTransition(state: TerminalState) : Action.Transition<Terminal>(state)
+    sealed class IdleTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
+        class ShopperInteraction : IdleTransition(Terminal::shopperInteraction)
+    }
+
+    @StateDecl
+    abstract fun busyMaintenance(signal: Signal) : Action<Terminal>
+    @TransitionDecl("busyMaintenance")
+    sealed class BusyMaintenanceTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
+        class Idle : BusyMaintenanceTransition(Terminal::idle)
+    }
+
+    @StateDecl
+    abstract fun shopperInteraction(signal: Signal) : Action<Terminal>
 
     @StateDecl
     abstract fun boarding(signal: Signal) : Action<Terminal>

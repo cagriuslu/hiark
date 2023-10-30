@@ -16,12 +16,12 @@ class TerminalImpl(
     class Otp : UserSignal
     class ConfigResponse : UserSignal
 
-    override fun unboardedRoot(signal: Signal): Action<Terminal> = when (signal) {
+    override fun unboarded(signal: Signal): Action<Terminal> = when (signal) {
         is Signal.Enter, is Signal.Exit -> Action.Handled()
         else -> Action.Super(Terminal::root)
     }
 
-    override fun boardedRoot(signal: Signal): Action<Terminal> = when (signal) {
+    override fun boarded(signal: Signal): Action<Terminal> = when (signal) {
         is Signal.Enter, is Signal.Exit -> Action.Handled()
         else -> Action.Super(Terminal::root)
     }
@@ -36,13 +36,25 @@ class TerminalImpl(
         }
 
         is Signal.Exit -> Action.Handled()
-        else -> Action.Super(Terminal::unboardedRoot)
+        else -> Action.Super(Terminal::unboarded)
     }
 
     override fun idle(signal: Signal): Action<Terminal> = when (signal) {
         is Signal.Enter, is Signal.Exit -> Action.Handled()
-        else -> Action.Super(Terminal::boardedRoot)
+        else -> Action.Super(Terminal::boarded)
     }
+
+    override fun busyMaintenance(signal: Signal): Action<Terminal> = when (signal) {
+        is Signal.Enter, is Signal.Exit -> Action.Handled()
+        else -> Action.Super(Terminal::boarded)
+    }
+
+    override fun shopperInteraction(signal: Signal): Action<Terminal> = when(signal) {
+        is Signal.Enter, is Signal.Exit -> Action.Handled()
+        else -> Action.Super(Terminal::idle)
+    }
+
+
 
     override fun boarding(signal: Signal): Action<Terminal> = when (signal) {
         is Signal.Enter -> {
@@ -55,7 +67,7 @@ class TerminalImpl(
         }
 
         is Signal.Exit -> Action.Handled()
-        else -> Action.Super(Terminal::unboardedRoot)
+        else -> Action.Super(Terminal::unboarded)
     }
 
     override fun askOtp(signal: Signal): Action<Terminal> = when (signal) {
@@ -68,7 +80,7 @@ class TerminalImpl(
             .withSignalAfterTransition(Otp())
 
         is Signal.Exit -> Action.Handled()
-        else -> Action.Super(Terminal::unboardedRoot)
+        else -> Action.Super(Terminal::unboarded)
     }
 
     override fun fetchConfig(signal: Signal): Action<Terminal> = when (signal) {
@@ -88,7 +100,7 @@ class TerminalImpl(
         }
 
         is Signal.Enter, is Signal.Exit -> Action.Handled()
-        else -> Action.Super(Terminal::unboardedRoot)
+        else -> Action.Super(Terminal::unboarded)
     }
 
 }
