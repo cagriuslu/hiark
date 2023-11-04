@@ -31,6 +31,7 @@ abstract class Terminal(name: String) : Actor<Terminal>(Terminal::bootUp, name) 
     @TransitionDecl("idle")
     sealed class IdleTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
         class ShopperInteraction : IdleTransition(Terminal::shopperInteraction)
+        class AdminMenu : IdleTransition(Terminal::adminMenu)
     }
 
     @StateDecl
@@ -63,5 +64,12 @@ abstract class Terminal(name: String) : Actor<Terminal>(Terminal::bootUp, name) 
     @TransitionDecl("fetchConfig")
     sealed class FetchConfigTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
         class Idle : FetchConfigTransition(Terminal::idle)
+    }
+
+    @StateDecl
+    abstract fun adminMenu(signal: Signal) : Action<Terminal>
+    @TransitionDecl("adminMenu")
+    sealed class AdminMenuTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
+        class Idle : AdminMenuTransition(Terminal::idle)
     }
 }

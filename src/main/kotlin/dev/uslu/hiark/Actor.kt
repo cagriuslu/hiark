@@ -4,9 +4,10 @@ import java.util.concurrent.LinkedBlockingDeque
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
+// Shorthand notation for a state
 typealias State<T> = T.(Signal) -> Action<T>
 
-@Suppress("UNCHECKED_CAST") // Casts from this to T is already ensured to succeed via `T: Actor<T>`
+@Suppress("UNCHECKED_CAST") // Casts from `this to T` is already ensured to succeed via `T: Actor<T>`
 abstract class Actor<T: Actor<T>>(initialState: State<T>, val name: String) {
     var currentState : State<T> = Actor<T>::root
         private set
@@ -91,30 +92,7 @@ abstract class Actor<T: Actor<T>>(initialState: State<T>, val name: String) {
         }
     }
 
-    fun probeStateHierarchy(state: State<T>, hierarchy : MutableList<State<T>>) : MutableList<State<T>> {
-        fun abort(msg: String) {
-            System.err.println(msg)
-            System.err.println(hierarchy)
-            exitProcess(-1)
-        }
 
-        when (val superAction = state(this as T, Signal.Probe)) {
-            // Keep probing
-            is Action.Super -> {
-                return if (state == superAction.state) {
-                    hierarchy // Return from recursion
-                } else {
-                    hierarchy.add(superAction.state)
-                    probeStateHierarchy(superAction.state, hierarchy)
-                }
-            }
-
-            else -> abort("Implementation error! State returns non-Super Action. All states must propagate Probe signal to its parent.")
-        }
-
-        // Unreachable code
-        return mutableListOf()
-    }
 
     init {
         thread {
@@ -155,5 +133,41 @@ abstract class Actor<T: Actor<T>>(initialState: State<T>, val name: String) {
             is Signal.Enter, is Signal.Exit -> Action.Handled()
             else -> Action.Super(Actor<T>::root)
         }
+    }
+}
+
+/**
+ * This function probes the given state with `Signal.Probe` to map out the path from that to its top-most state.
+ * The given state will not be inserted into the list by this function.
+ * If you want the given state to be at the beginning of the list,
+ * you can call this function with a list that's already initialized.
+ *
+ * This function assumes all the states defer the `Probe` signal to its parent using `Action.Super(parent)`.
+ * This is one of the cornerstone behaviours of HSMs and this framework depends on this to work properly.
+ * The probing stops when a state returns itself as its parent, signifying that the top-most parent has been reached.
+ *
+ * @param state The state to probe
+ * @param hierarchy The mutable list in which the path to root will be stored. The list is used write-only, thus you can
+ * give an empty list, or a list that already has elements.
+ */
+@Suppress("UNCHECKED_CAST") // Casts from `this to T` is already ensured to succeed via `T: Actor<T>`
+fun <T: Actor<T>> Actor<T>.probeStateHierarchy(state: State<T>, hierarchy : MutableList<State<T>>) : MutableList<State<T>> {
+    fun abort(msg: String) {
+        System.err.println(msg)
+        System.err.println(hierarchy)
+        exitProcess(-1)
+    }
+
+    val superAction = state(this as T, Signal.Probe)
+    assert(superAction is Action.Super) {
+        "IMPLEMENTATION ERROR! State ($state) returned a non-Super Action. All states must propagate `Probe` signal to its parent using Action.Super(parent)."
+    }
+
+    (superAction as Action.Super)
+    return if (state == superAction.state) {
+        hierarchy // Return from recursion
+    } else {
+        hierarchy.add(superAction.state)
+        probeStateHierarchy(superAction.state, hierarchy)
     }
 }

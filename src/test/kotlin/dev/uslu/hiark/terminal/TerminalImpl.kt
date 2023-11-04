@@ -103,4 +103,9 @@ class TerminalImpl(
         else -> Action.Super(Terminal::unboarded)
     }
 
+    override fun adminMenu(signal: Signal): Action<Terminal> = when (signal) {
+        is Signal.Enter, is Signal.Exit -> Action.Handled()
+        else -> Action.Super(Terminal::boarded)
+    }
+
 }
