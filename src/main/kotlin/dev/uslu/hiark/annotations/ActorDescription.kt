@@ -1,3 +1,3 @@
 package dev.uslu.hiark.annotations
 
-annotation class StateDecl
+annotation class ActorDescription

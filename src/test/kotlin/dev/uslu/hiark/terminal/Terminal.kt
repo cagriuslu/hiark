@@ -1,75 +1,90 @@
 package dev.uslu.hiark.terminal
 
 import dev.uslu.hiark.*
-import dev.uslu.hiark.annotations.ActorDecl
-import dev.uslu.hiark.annotations.StateDecl
-import dev.uslu.hiark.annotations.TransitionDecl
+import dev.uslu.hiark.annotations.ActorDescription
+import dev.uslu.hiark.annotations.InitialState
+import dev.uslu.hiark.terminal.Terminal.AskForOtp.Companion.askForOtp
+import dev.uslu.hiark.terminal.Terminal.BoardedIdle.Companion.boardedIdle
+import dev.uslu.hiark.terminal.Terminal.BoardedRoot.Companion.boardedRoot
+import dev.uslu.hiark.terminal.Terminal.FetchConfig.Companion.fetchConfig
+import dev.uslu.hiark.terminal.Terminal.Transaction.Companion.transaction
+import dev.uslu.hiark.terminal.Terminal.TryBoard.Companion.tryBoard
+import dev.uslu.hiark.terminal.Terminal.UnboardedIdle.Companion.unboardedIdle
 
-// This file can be auto-analyzed
+@ActorDescription
+class Terminal {
 
-typealias TerminalState = State<Terminal>
+    @InitialState
+    class UnboardedIdle : State() {
+        sealed class Transition(stateDesc: StateDescriptor) : Action.Transition(stateDesc) {
+            class BoardedIdle : UnboardedIdle.Transition(boardedIdle)
+            class TryBoard : UnboardedIdle.Transition(tryBoard)
+            class AskForOtp : UnboardedIdle.Transition(askForOtp)
+        }
 
-@ActorDecl("bootUp")
-abstract class Terminal(name: String) : Actor<Terminal>(Terminal::bootUp, name) {
-
-    @StateDecl
-    abstract fun unboarded(signal: Signal) : Action<Terminal>
-
-    @StateDecl
-    abstract fun boarded(signal: Signal) : Action<Terminal>
-
-    @StateDecl
-    abstract fun bootUp(signal: Signal) : Action<Terminal>
-    @TransitionDecl("bootUp")
-    sealed class BootUpTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
-        class Idle : BootUpTransition(Terminal::idle)
-        class Boarding : BootUpTransition(Terminal::boarding)
+        companion object {
+            val unboardedIdle = StateDescriptor(::UnboardedIdle, null)
+        }
     }
 
-    @StateDecl
-    abstract fun idle(signal: Signal) : Action<Terminal>
-    @TransitionDecl("idle")
-    sealed class IdleTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
-        class ShopperInteraction : IdleTransition(Terminal::shopperInteraction)
-        class AdminMenu : IdleTransition(Terminal::adminMenu)
+    class TryBoard : State() {
+        sealed class Transition(stateDesc: StateDescriptor) : Action.Transition(stateDesc) {
+            class UnboardedIdle : TryBoard.Transition(unboardedIdle)
+            class FetchConfig : TryBoard.Transition(fetchConfig)
+        }
+
+        companion object {
+            val tryBoard = StateDescriptor(::TryBoard, unboardedIdle)
+        }
     }
 
-    @StateDecl
-    abstract fun busyMaintenance(signal: Signal) : Action<Terminal>
-    @TransitionDecl("busyMaintenance")
-    sealed class BusyMaintenanceTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
-        class Idle : BusyMaintenanceTransition(Terminal::idle)
+    class AskForOtp : State() {
+        sealed class Transition(stateDesc: StateDescriptor) : Action.Transition(stateDesc) {
+            class UnboardedIdle : AskForOtp.Transition(unboardedIdle)
+            class FetchConfig : AskForOtp.Transition(fetchConfig)
+        }
+
+        companion object {
+            val askForOtp = StateDescriptor(::AskForOtp, unboardedIdle)
+        }
     }
 
-    @StateDecl
-    abstract fun shopperInteraction(signal: Signal) : Action<Terminal>
+    class BoardedRoot : State() {
+        sealed class Transition(stateDesc: StateDescriptor) : Action.Transition(stateDesc)
 
-    @StateDecl
-    abstract fun boarding(signal: Signal) : Action<Terminal>
-    @TransitionDecl("boarding")
-    sealed class BoardingTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
-        class FetchConfig : BoardingTransition(Terminal::fetchConfig)
-        class AskOtp : BoardingTransition(Terminal::askOtp)
+        companion object {
+            val boardedRoot = StateDescriptor(::BoardedRoot, null)
+        }
     }
 
-    @StateDecl
-    abstract fun askOtp(signal: Signal) : Action<Terminal>
-    @TransitionDecl("askOtp")
-    sealed class AskOtpTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
-        class FetchConfig : AskOtpTransition(Terminal::fetchConfig)
+    class FetchConfig : State() {
+        sealed class Transition(stateDesc: StateDescriptor) : Action.Transition(stateDesc) {
+            class UnboardedIdle : FetchConfig.Transition(unboardedIdle)
+            class BoardedIdle : FetchConfig.Transition(boardedIdle)
+        }
+
+        companion object {
+            val fetchConfig = StateDescriptor(::FetchConfig, null)
+        }
     }
 
-    @StateDecl
-    abstract fun fetchConfig(signal: Signal) : Action<Terminal>
-    @TransitionDecl("fetchConfig")
-    sealed class FetchConfigTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
-        class Idle : FetchConfigTransition(Terminal::idle)
+    class BoardedIdle : State() {
+        sealed class Transition(stateDesc: StateDescriptor) : Action.Transition(stateDesc) {
+            class Transaction : BoardedIdle.Transition(transaction)
+        }
+
+        companion object {
+            val boardedIdle = StateDescriptor(::BoardedIdle, boardedRoot)
+        }
     }
 
-    @StateDecl
-    abstract fun adminMenu(signal: Signal) : Action<Terminal>
-    @TransitionDecl("adminMenu")
-    sealed class AdminMenuTransition(state: TerminalState) : Action.Transition<Terminal>(state) {
-        class Idle : AdminMenuTransition(Terminal::idle)
+    class Transaction : State() {
+        sealed class Transition(stateDesc: StateDescriptor) : Action.Transition(stateDesc) {
+            class BoardedIdle : Transaction.Transition(boardedIdle)
+        }
+
+        companion object {
+            val transaction = StateDescriptor(::Transaction, boardedIdle)
+        }
     }
 }

@@ -1,118 +1,115 @@
 package dev.uslu.hiark
 
+import java.util.LinkedList
 import java.util.concurrent.LinkedBlockingDeque
 import kotlin.concurrent.thread
-import kotlin.system.exitProcess
 
-// Shorthand notation for a state
-typealias State<T> = T.(Signal) -> Action<T>
+// TODO implement enter and exit
+// TODO check that if a handler returns a Transition, it returns something from the correct Transition class
 
-@Suppress("UNCHECKED_CAST") // Casts from `this to T` is already ensured to succeed via `T: Actor<T>`
-abstract class Actor<T: Actor<T>>(initialState: State<T>, val name: String) {
-    var currentState : State<T> = Actor<T>::root
-        private set
+class Actor(initialState: StateDescriptor, val name: String) {
+    /**
+     * Contains the states from ROOT to LEAF
+     */
+    private var currentStateChain = LinkedList<Pair<StateDescriptor, State>>()
     private val signalQueue = LinkedBlockingDeque<Signal>()
 
-    private fun handleAction(action: Action<T>, currentSignal: Signal) {
-        fun abort(msg: String) {
-            System.err.println(msg)
-            exitProcess(-1)
-        }
+    private fun exitLeafState() {
+        // Destroy state
+        currentStateChain.last().second.exit()
+        // Remove state from chain
+        currentStateChain.removeLastOrNull()
+    }
 
-        when (action) {
+    private fun exitAll() {
+        while (currentStateChain.isNotEmpty()) {
+            exitLeafState()
+        }
+    }
+
+    private fun exitUntil(sd: StateDescriptor) {
+        while (currentStateChain.last().first != sd) {
+            exitLeafState()
+        }
+    }
+
+    private fun enterState(sd: StateDescriptor) {
+
+    }
+
+    private fun enterAll(a: List<StateDescriptor>) : State {
+        a.forEach {
+            currentStateChain.add(Pair(it, it.stateFactory()))
+        }
+        return currentStateChain.last().second
+    }
+
+    private fun enterAfter(a: List<StateDescriptor>, index: Int) : State {
+        for (i in index + 1 .. a.size) {
+            currentStateChain.add(Pair(a[i], a[i].stateFactory()))
+        }
+        return currentStateChain.last().second
+    }
+
+    private fun transitionToState(state: StateDescriptor) : State {
+        val parentChain = buildParentChain(state)
+        // Try to find the common state in the chains
+        return when (val commonState = findFirstCommonLeaf(parentChain, currentStateChain)) {
+            null -> {
+                exitAll() // There isn't any common state, exit all
+                enterAll(parentChain) // Enter all in the new parentChain
+            }
+            else -> {
+                exitUntil(commonState) // Exit until the common
+                enterAfter(parentChain, parentChain.indexOf(commonState)) // Enter the states after the common
+            }
+        }
+    }
+
+    private fun handleSignal(state: State, signal: Signal) {
+        when (val action = state.handle(signal)) {
             // The current state has finished handling the signal
             is Action.Handled -> {
                 // If a deferred signal exists
                 action.deferredSignal?.let { signalQueue.put(it) }
-
                 System.err.println("$name> HANDLED")
             }
 
             // The current state wants to switch to another state
             is Action.Transition -> {
-                System.err.println("$name> TRANSITION: ${action.state.toString().trimWarning()}")
-
-                // Transition to root state is not allowed
-                if (action.state == Actor<T>::root) {
-                    // TODO check if the user has implemented a custom root state
-                    abort("Implementation Error! $currentState tried to transition to rootState.")
-                }
-
-                // Probe state to find the common parent
-                val srcStateHierarchy = probeStateHierarchy(currentState, mutableListOf(currentState))
-                val dstStateHierarchy = probeStateHierarchy(action.state, mutableListOf(action.state))
-                val srcStateHierarchyUntilCommon = srcStateHierarchy.retainUntilFirstCommon(dstStateHierarchy)
-                val dstStateHierarchyUntilCommon = dstStateHierarchy.retainUntilFirstCommon(srcStateHierarchy)
-
-                // Exit from src states
-                srcStateHierarchyUntilCommon.forEach {
-                    System.err.println("$name> EXIT: ${it.toString().trimWarning()}")
-                    val exitAction = it(this as T, Signal.Exit)
-                    if (exitAction !is Action.Handled<T>) {
-                        abort("Implementation Error! $it returned an action other than Halt for Signal.Exit while transitioning.")
-                    } else {
-                        exitAction.deferredSignal?.let { s -> signalQueue.put(s) }
-                    }
-                }
-                // Enter into dst states
-                dstStateHierarchyUntilCommon.subList(1, dstStateHierarchyUntilCommon.size).reversed().forEach {
-                    System.err.println("$name> ENTER: ${it.toString().trimWarning()}")
-                    val enterAction = it(this as T, Signal.Enter)
-                    if (enterAction !is Action.Handled<T>) {
-                        abort("Implementation Error! $it returned an action other than Halt for Signal.Enter while transitioning.")
-                    } else {
-                        enterAction.deferredSignal?.let { s -> signalQueue.put(s) }
-                    }
-                }
-
-                // Switch state
-                currentState = action.state
-                System.err.println("$name> ENTER NEW CURRENT STATE: ${currentState.toString().trimWarning()}")
-                // Enter into switched state
-                val enterAction = currentState(this as T, Signal.Enter)
-                handleAction(enterAction, Signal.Enter)
-
-                // If the is stable and if the original action had a `withSignal` parameter
-                if (enterAction is Action.Handled) {
-                    action.signalAfterTransition?.let {
-                        System.err.println("$name> SIGNAL: $it -> NEW CURRENT STATE")
-                        handleAction(currentState(this as T, it), it)
-                    }
+                System.err.println("$name> TRANSITION: ${action.stateDesc}")
+                transitionToState(action.stateDesc)
+                action.signalAfterTransition?.let {
+                    System.err.println("$name> SIGNAL: $it -> NEW CURRENT STATE")
+                    handleSignal(currentStateChain.last().second, it)
                 }
             }
 
             // The current state wants its parent to handle the signal
             is Action.Super -> {
-                // If current state isn't already the root state
-                if (currentState != action.state) {
-                    System.err.println("$name> SIGNAL: $currentSignal -> PARENT: ${action.state.toString().trimWarning()}")
-                    handleAction(action.state(this as T, currentSignal), currentSignal)
+                val currIndex = currentStateChain.indexOfFirst { it.second == state }
+                if (0 < currIndex) {
+                    System.err.println("$name> SIGNAL: $signal -> PARENT: ${currentStateChain[currIndex - 1].second}")
+                    handleSignal(currentStateChain[currIndex - 1].second, signal)
                 }
             }
         }
     }
 
-
-
     init {
         thread {
-            // Since Action.Transition is abstract, we need to create a dummy class for initial transition
-            class InitialTransition : Action.Transition<T>(initialState)
-            handleAction(InitialTransition(), Signal.Enter)
-
+            transitionToState(initialState)
             while (true) {
                 // Get one signal from the queue
                 System.err.println("$name> WAITING FOR SIGNAL...")
                 val signal = signalQueue.take()
                 if (signal is Signal.Stop) {
-                    break;
+                    break
                 }
-
                 // Dispatch the signal to current state, handle resulting action
-                System.err.println("$name> SIGNAL: $signal -> CURRENT STATE: ${currentState.toString().trimWarning()}")
-                handleAction(currentState(this as T, signal), signal)
+                System.err.println("$name> SIGNAL: $signal -> CURRENT STATE: ${currentStateChain.last().second}")
+                handleSignal(currentStateChain.last().second, signal)
             }
-
             System.err.println("$name> STOPPED")
         }
     }
@@ -126,48 +123,33 @@ abstract class Actor<T: Actor<T>>(initialState: State<T>, val name: String) {
         signalQueue.put(Signal.Stop)
     }
 
-    // An example root state that can be used by implementations
-    // The implementation of this function can also be used as a skeleton for new states
-    fun root(signal: Signal) : Action<T> {
-        return when (signal) {
-            is Signal.Enter, is Signal.Exit -> Action.Handled()
-            else -> Action.Super(Actor<T>::root)
+    fun currentState() : State = currentStateChain.last().second
+
+    companion object {
+        /**
+         * Returns the states from the ROOT to the given state
+         */
+        fun buildParentChain(state: StateDescriptor) : List<StateDescriptor> {
+            val chain = LinkedList(listOf(state))
+            // Add parents to the chain unless null
+            for (i in 1..100) {
+                when(val parent = chain.first().parentState){
+                    null -> { return chain }
+                    else -> { chain.addFirst(parent) }
+                }
+            }
+            // If no root has been reached after 100 states, throw
+            throw IllegalStateException("Parent chain of a state has more that 100 states")
         }
-    }
-}
 
-/**
- * This function probes the given state with `Signal.Probe` to map out the path from that to its top-most state.
- * The given state will not be inserted into the list by this function.
- * If you want the given state to be at the beginning of the list,
- * you can call this function with a list that's already initialized.
- *
- * This function assumes all the states defer the `Probe` signal to its parent using `Action.Super(parent)`.
- * This is one of the cornerstone behaviours of HSMs and this framework depends on this to work properly.
- * The probing stops when a state returns itself as its parent, signifying that the top-most parent has been reached.
- *
- * @param state The state to probe
- * @param hierarchy The mutable list in which the path to root will be stored. The list is used write-only, thus you can
- * give an empty list, or a list that already has elements.
- */
-@Suppress("UNCHECKED_CAST") // Casts from `this to T` is already ensured to succeed via `T: Actor<T>`
-fun <T: Actor<T>> Actor<T>.probeStateHierarchy(state: State<T>, hierarchy : MutableList<State<T>>) : MutableList<State<T>> {
-    fun abort(msg: String) {
-        System.err.println(msg)
-        System.err.println(hierarchy)
-        exitProcess(-1)
-    }
-
-    val superAction = state(this as T, Signal.Probe)
-    assert(superAction is Action.Super) {
-        "IMPLEMENTATION ERROR! State ($state) returned a non-Super Action. All states must propagate `Probe` signal to its parent using Action.Super(parent)."
-    }
-
-    (superAction as Action.Super)
-    return if (state == superAction.state) {
-        hierarchy // Return from recursion
-    } else {
-        hierarchy.add(superAction.state)
-        probeStateHierarchy(superAction.state, hierarchy)
+        /**
+         * Returns the first common state in two state chains
+         */
+        private fun findFirstCommonLeaf(a: List<StateDescriptor>, b: List<Pair<StateDescriptor, State>>) : StateDescriptor? {
+            // Try to find the common state in the chains
+            return a.reversed().find { aState ->
+                b.reversed().any { it.first == aState }
+            }
+        }
     }
 }

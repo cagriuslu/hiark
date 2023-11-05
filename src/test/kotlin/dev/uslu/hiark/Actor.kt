@@ -4,27 +4,31 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 class SimpleActorTest {
-    class SimpleActor : Actor<SimpleActor>(SimpleActor::startState, SimpleActor::class.java.simpleName) {
+    class SimpleState : State() {
         var flag = false
 
-        fun startState(signal: Signal) : Action<SimpleActor> {
-            return when (signal) {
-                is Signal.Enter -> {
-                    flag = true
-                    Action.Handled()
-                }
-                is Signal.Exit -> Action.Handled()
-                else -> Action.Super(SimpleActor::startState)
-            }
+        override fun handle(signal: Signal): Action {
+            flag = true
+            return Action.Handled()
+        }
+
+        companion object {
+            fun simpleState() : State = SimpleState()
+
+            val simpleStateDesc = StateDescriptor(::simpleState, null)
         }
     }
 
+    class SimpleSignal : Signal
+
     @Test
     fun test() {
-        val simpleActor = SimpleActor()
-        Thread.sleep(1000)
+        val simpleActor = Actor(SimpleState.simpleStateDesc, "Simple")
+        simpleActor.queue(SimpleSignal())
+        Thread.sleep(100)
         simpleActor.stop()
 
-        assertTrue { simpleActor.flag }
+        val simpleState = simpleActor.currentState()
+        assertTrue { (simpleState as SimpleState).flag }
     }
 }

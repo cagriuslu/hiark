@@ -1,11 +1,11 @@
 package dev.uslu.hiark.terminal
 
-import dev.uslu.hiark.graphActor
+import dev.uslu.hiark.Graph
 import kotlin.test.Test
 
 class Graph {
     @Test
     fun graphTerminal() {
-        println(graphActor(Terminal::class, TerminalImpl(true, false)))
+        println(Graph(Terminal::class).graph())
     }
 }

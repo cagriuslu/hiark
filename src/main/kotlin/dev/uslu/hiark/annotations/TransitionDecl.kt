@@ -1,3 +1,0 @@
-package dev.uslu.hiark.annotations
-
-annotation class TransitionDecl(val srcStateName: String)
